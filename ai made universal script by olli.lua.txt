@@ -1,0 +1,411 @@
+
+--[[
+    /repzz TRAINING TOOLKIT
+    Right Ctrl = Toggle Menu
+    Right Mouse = Aim Assist
+    Head / Torso = Aim Target
+    Unload = Full Cleanup
+
+    For your own Roblox Studio experience.
+]]
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local Player = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+local Settings = {
+    ESP = false,
+    Aim = false,
+    Sprint = false,
+    AimPart = "Head",
+    FOV = 150,
+    Smoothness = 8,
+    Speed = 24,
+    Jump = 60
+}
+
+local Connections = {}
+local ESPObjects = {}
+local AimHeld = false
+local Unloaded = false
+local OriginalWalkSpeed = 16
+local OriginalJumpPower = 50
+
+local function Connect(signal, callback)
+    local connection = signal:Connect(callback)
+    table.insert(Connections, connection)
+    return connection
+end
+
+-- GUI
+local GUI = Instance.new("ScreenGui")
+GUI.Name = "RepzzToolkit"
+GUI.ResetOnSpawn = false
+GUI.Parent = Player:WaitForChild("PlayerGui")
+
+local Main = Instance.new("Frame")
+Main.Size = UDim2.fromOffset(330, 470)
+Main.Position = UDim2.new(0, 30, 0.5, -235)
+Main.BackgroundColor3 = Color3.fromRGB(20, 20, 29)
+Main.BorderSizePixel = 0
+Main.Parent = GUI
+
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 45)
+Title.BackgroundColor3 = Color3.fromRGB(100, 55, 185)
+Title.Text = "/repzz | TRAINING TOOLKIT"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.Parent = Main
+
+local function Button(text, y, callback, color)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -24, 0, 34)
+    button.Position = UDim2.fromOffset(12, y)
+    button.BackgroundColor3 = color or Color3.fromRGB(48, 48, 64)
+    button.TextColor3 = Color3.new(1, 1, 1)
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 13
+    button.Text = text
+    button.Parent = Main
+
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+
+    Connect(button.MouseButton1Click, callback)
+    return button
+end
+
+local function Input(label, y, default, callback)
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.fromOffset(145, 30)
+    title.Position = UDim2.fromOffset(14, y)
+    title.BackgroundTransparency = 1
+    title.Text = label
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.Font = Enum.Font.Gotham
+    title.TextSize = 13
+    title.Parent = Main
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.fromOffset(145, 30)
+    box.Position = UDim2.fromOffset(170, y)
+    box.BackgroundColor3 = Color3.fromRGB(48, 48, 64)
+    box.TextColor3 = Color3.new(1, 1, 1)
+    box.Font = Enum.Font.Gotham
+    box.TextSize = 13
+    box.Text = tostring(default)
+    box.ClearTextOnFocus = false
+    box.Parent = Main
+
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 5)
+
+    Connect(box.FocusLost, function()
+        local value = tonumber(box.Text)
+        if value then
+            callback(value)
+        else
+            box.Text = tostring(default)
+        end
+    end)
+end
+
+-- FOV CIRCLE
+local Circle = Instance.new("Frame")
+Circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
+Circle.AnchorPoint = Vector2.new(0.5, 0.5)
+Circle.BackgroundTransparency = 1
+Circle.Visible = false
+Circle.Parent = GUI
+
+Instance.new("UICorner", Circle).CornerRadius = UDim.new(1, 0)
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(170, 100, 255)
+Stroke.Thickness = 2
+Stroke.Parent = Circle
+
+-- ESP
+local function RemoveESP(target)
+    if ESPObjects[target] then
+        for _, object in ipairs(ESPObjects[target]) do
+            object:Destroy()
+        end
+        ESPObjects[target] = nil
+    end
+end
+
+local function AddESP(target)
+    if target == Player or not target.Character then return end
+
+    RemoveESP(target)
+
+    local character = target.Character
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+    if not root or not humanoid then return end
+
+    local highlight = Instance.new("Highlight")
+    highlight.Adornee = character
+    highlight.FillColor = Color3.fromRGB(140, 70, 255)
+    highlight.OutlineColor = Color3.new(1, 1, 1)
+    highlight.FillTransparency = 0.65
+    highlight.Parent = character
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Adornee = root
+    billboard.Size = UDim2.fromOffset(190, 40)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = GUI
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.fromScale(1, 1)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 12
+    label.Parent = billboard
+
+    ESPObjects[target] = {highlight, billboard, label}
+end
+
+local function RefreshESP()
+    for _, target in ipairs(Players:GetPlayers()) do
+        if target ~= Player then
+            if Settings.ESP then
+                AddESP(target)
+            else
+                RemoveESP(target)
+            end
+        end
+    end
+end
+
+-- BUTTONS
+local espButton
+espButton = Button("ESP: OFF", 60, function()
+    Settings.ESP = not Settings.ESP
+    espButton.Text = "ESP: " .. (Settings.ESP and "ON" or "OFF")
+    RefreshESP()
+end)
+
+local aimButton
+aimButton = Button("AIM ASSIST: OFF", 101, function()
+    Settings.Aim = not Settings.Aim
+    aimButton.Text = "AIM ASSIST: " .. (Settings.Aim and "ON" or "OFF")
+end)
+
+local sprintButton
+sprintButton = Button("SPRINT: OFF", 142, function()
+    Settings.Sprint = not Settings.Sprint
+    sprintButton.Text = "SPRINT: " .. (Settings.Sprint and "ON" or "OFF")
+end)
+
+local partButton
+partButton = Button("AIM PART: HEAD", 183, function()
+    Settings.AimPart = Settings.AimPart == "Head" and "Torso" or "Head"
+    partButton.Text = "AIM PART: " .. string.upper(Settings.AimPart)
+end)
+
+Input("FOV radius", 230, Settings.FOV, function(value)
+    Settings.FOV = math.clamp(value, 20, 600)
+    Circle.Size = UDim2.fromOffset(Settings.FOV * 2, Settings.FOV * 2)
+end)
+
+Input("Smoothness", 270, Settings.Smoothness, function(value)
+    Settings.Smoothness = math.clamp(value, 1, 30)
+end)
+
+Input("Walk speed", 310, Settings.Speed, function(value)
+    Settings.Speed = math.clamp(value, 16, 100)
+end)
+
+Input("Jump power", 350, Settings.Jump, function(value)
+    Settings.Jump = math.clamp(value, 20, 150)
+end)
+
+local unloadButton
+unloadButton = Button("UNLOAD TOOLKIT", 400, function()
+    if Unloaded then return end
+    Unloaded = true
+
+    -- Restore movement
+    local character = Player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+    if humanoid then
+        humanoid.WalkSpeed = OriginalWalkSpeed
+        humanoid.JumpPower = OriginalJumpPower
+    end
+
+    -- Disconnect every saved connection
+    for _, connection in ipairs(Connections) do
+        if connection.Connected then
+            connection:Disconnect()
+        end
+    end
+
+    -- Remove ESP
+    for target in pairs(ESPObjects) do
+        RemoveESP(target)
+    end
+
+    GUI:Destroy()
+end, Color3.fromRGB(155, 45, 55))
+
+-- TARGET PART
+local function GetAimPart(character)
+    if Settings.AimPart == "Head" then
+        return character:FindFirstChild("Head")
+    end
+
+    return character:FindFirstChild("UpperTorso")
+        or character:FindFirstChild("Torso")
+        or character:FindFirstChild("HumanoidRootPart")
+end
+
+-- TARGET SELECTION
+local function GetClosestTarget()
+    local mousePosition = UIS:GetMouseLocation()
+    local closestPart = nil
+    local shortestDistance = Settings.FOV
+
+    for _, target in ipairs(Players:GetPlayers()) do
+        if target ~= Player and target.Character then
+            local character = target.Character
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local part = GetAimPart(character)
+
+            local sameTeam = Player.Team ~= nil
+                and target.Team == Player.Team
+
+            if humanoid and humanoid.Health > 0 and part and not sameTeam then
+                local screen, visible =
+                    Camera:WorldToViewportPoint(part.Position)
+
+                if visible then
+                    local distance = (
+                        Vector2.new(screen.X, screen.Y) - mousePosition
+                    ).Magnitude
+
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestPart = part
+                    end
+                end
+            end
+        end
+    end
+
+    return closestPart
+end
+
+-- INPUT
+Connect(UIS.InputBegan, function(input)
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        Main.Visible = not Main.Visible
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        AimHeld = true
+    end
+end)
+
+Connect(UIS.InputEnded, function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        AimHeld = false
+    end
+end)
+
+-- PLAYER CONNECTIONS
+Connect(Players.PlayerAdded, function(target)
+    Connect(target.CharacterAdded, function()
+        task.wait(1)
+        if not Unloaded and Settings.ESP then
+            AddESP(target)
+        end
+    end)
+end)
+
+Connect(Players.PlayerRemoving, RemoveESP)
+
+for _, target in ipairs(Players:GetPlayers()) do
+    if target ~= Player then
+        Connect(target.CharacterAdded, function()
+            task.wait(1)
+            if not Unloaded and Settings.ESP then
+                AddESP(target)
+            end
+        end)
+    end
+end
+
+-- MAIN LOOP
+Connect(RunService.RenderStepped, function()
+    if Unloaded then return end
+
+    Camera = workspace.CurrentCamera
+
+    local mousePosition = UIS:GetMouseLocation()
+    Circle.Position = UDim2.fromOffset(mousePosition.X, mousePosition.Y)
+    Circle.Visible = Settings.Aim
+
+    -- Update ESP text
+    for target, objects in pairs(ESPObjects) do
+        local character = target.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+        if root and humanoid then
+            local distance = (root.Position - Camera.CFrame.Position).Magnitude
+
+            objects[3].Text = string.format(
+                "%s | HP: %d | %.0f studs",
+                target.DisplayName,
+                humanoid.Health,
+                distance
+            )
+        end
+    end
+
+    -- Aim assist for your own training experience
+    if Settings.Aim and AimHeld then
+        local target = GetClosestTarget()
+
+        if target then
+            local desired = CFrame.lookAt(
+                Camera.CFrame.Position,
+                target.Position
+            )
+
+            local alpha = math.clamp(
+                1 - math.exp(-Settings.Smoothness * 0.1),
+                0,
+                1
+            )
+
+            Camera.CFrame = Camera.CFrame:Lerp(desired, alpha)
+        end
+    end
+
+    -- Movement
+    local character = Player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+    if humanoid then
+        humanoid.WalkSpeed = Settings.Sprint and Settings.Speed or 16
+        humanoid.UseJumpPower = true
+        humanoid.JumpPower = Settings.Jump
+    end
+end)
+
+print("[/repzz] Training Toolkit loaded.")
